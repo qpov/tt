@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Справочник</title>
+    <script src="https://cdn.webix.com/edge/webix.js"></script>
+    <link rel="stylesheet" href="https://cdn.webix.com/edge/webix.css">
+</head>
+
+<body>
+    <script type="text/javascript">
+        webix.ready(function () {
+            webix.ui({
+                id: "userForm",
+                view: "window",
+                modal: true,
+                position: "center",
+                width: 400,
+                head: {
+                    view: "toolbar",
+                    cols: [
+                        { view: "label", label: "Форма пользователя" },
+                        {
+                            view: "icon",
+                            icon: "times",
+                            click: () => $$("userForm").hide()
+                        }
+                    ]
+                },
+                body: {
+                    view: "form",
+                    id: "mainForm",
+                    elements: [
+                        { view: "text", name: "full_name", label: "ФИО", required: true },
+                        { view: "text", name: "login", label: "Логин", required: true },
+                        { view: "text", name: "password", type: "password", label: "Пароль" },
+                        {
+                            view: "combo",
+                            name: "role_id",
+                            label: "Роль",
+                            options: {
+                                body: {
+                                    url: "/tt/api/roles.php",
+                                    datatype: "json",
+                                    template: "#name#"
+                                }
+                            }
+                        },
+                        {
+                            margin: 10,
+                            cols: [
+                                {
+                                    view: "button",
+                                    value: "Сохранить",
+                                    click: saveUser,
+                                    css: "webix_primary"
+                                },
+                                {
+                                    view: "button",
+                                    value: "Отмена",
+                                    click: () => $$("userForm").hide()
+                                }
+                            ]
+                        }
+                    ]
+                }
+            });
+
+            function showEditForm(user = null) {
+                console.log("showEditForm called", user);
+                if (!$$("userForm")) {
+                    console.error("userForm не найден!");
+                    return;
+                }
+
+                $$("mainForm").clear();
+                $$("userForm").show();
+
+                if (user) {
+                    $$("mainForm").setValues({
+                        id: user.id,
+                        full_name: user.full_name,
+                        login: user.login,
+                        role_id: user.role_id ? user.role_id.toString() : ""
+                    });
+                }
+            }
+
+            function saveUser() {
+                console.log("saveUser called");
+                const form = $$("mainForm");
+
+                if (!form.validate()) {
+                    webix.message({ type: "error", text: "Заполните все обязательные поля!" });
+                    return;
+                }
+
+                const values = form.getValues();
+                const id = values.id;
+                const method = id ? "PUT" : "POST";
+                const url = id ? `/tt/api/users.php?id=${id}` : "/tt/api/users.php";
+
+                const data = {
+                    full_name: values.full_name.trim(),
+                    login: values.login.trim(),
+                    role_id: values.role_id
+                };
+
+                if (!id) data.password = values.password;
+
+                webix.ajax()
+                    .headers({ "Content-Type": "application/json" })
+                [method.toLowerCase()](url, data)
+                    .then(() => {
+                        $$("usersGrid").clearAll();
+                        $$("usersGrid").load("/tt/api/users.php");
+                        $$("userForm").hide();
+                        webix.message({ type: "success", text: "Данные сохранены" });
+                    })
+                    .catch(err => {
+                        console.error("Ошибка при сохранении:", err);
+                        webix.message({
+                            type: "error",
+                            text: "Ошибка при сохранении пользователя"
+                        });
+                    });
+            }
+
+            webix.ui({
+                rows: [
+                    {
+                        view: "toolbar",
+                        elements: [
+                            {
+                                view: "button",
+                                value: "Добавить пользователя",
+                                click: () => showEditForm(),
+                                css: "webix_primary"
+                            }
+                        ]
+                    },
+                    {
+                        view: "datatable",
+                        id: "usersGrid",
+                        columns: [
+                            { id: "id", header: "ID", width: 50 },
+                            { id: "full_name", header: "ФИО", fillspace: true },
+                            { id: "login", header: "Логин", width: 150 },
+                            { id: "role_name", header: "Роль", width: 150 },
+                            {
+                                id: "is_blocked",
+                                header: "Статус",
+                                template: obj => obj.is_blocked ? "Заблокирован" : "Активен",
+                                width: 120
+                            },
+                            {
+                                header: "Действия",
+                                template: obj => `
+                                    <button class="edit-btn">Изменить</button>
+                                    <button class="block-btn">${obj.is_blocked ? "Разблокировать" : "Заблокировать"}</button>
+                                `,
+                                width: 200
+                            }
+                        ],
+                        onClick: {
+                            "edit-btn": function (e, id) {
+                                const user = this.getItem(id.row);
+                                showEditForm(user);
+                            },
+                            "block-btn": function (e, id) {
+                                const user = this.getItem(id.row);
+                                const action = user.is_blocked ? 0 : 1;
+
+                                webix.confirm({
+                                    title: "Подтверждение",
+                                    text: `Вы уверены, что хотите ${action ? "заблокировать" : "разблокировать"} пользователя?`,
+                                    callback: function (result) {
+                                        if (result) {
+                                            webix.ajax()
+                                                .headers({ "Content-Type": "application/json" })
+                                                .put(`/tt/api/users.php?id=${user.id}`, { is_blocked: action })
+                                                .then(() => {
+                                                    $$("usersGrid").clearAll();
+                                                    $$("usersGrid").load("/tt/api/users.php");
+                                                })
+                                                .catch(err => {
+                                                    webix.message({ type: "error", text: "Ошибка блокировки" });
+                                                });
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                ]
+            });
+
+            $$("usersGrid").load("/tt/api/users.php");
+        });
+    </script>
+</body>
+
+</html>
