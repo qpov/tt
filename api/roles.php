@@ -12,7 +12,7 @@ try {
         $formatted_roles = array_map(function ($role) {
             return [
                 'id' => $role['id'],
-                'value' => $role['name']
+                'name' => $role['name']
             ];
         }, $roles);
 
